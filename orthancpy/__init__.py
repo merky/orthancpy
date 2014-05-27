@@ -24,13 +24,16 @@ class OrthancObject(object):
         if self._data is None or force_update:
             self._data = self.orthanc.get(self.path)
 
-    def _get_tag(self, tag):
+    def _get_tag(self, tag, func=None):
         self._get_data()
         # get tag dict
         main = self._get_field('MainDicomTags')
         # check if dict exists
         if main is None: return None
-        return main.get(tag, None)
+        value = main.get(tag, None)
+        # transform data if necessary
+        if func is not None: return func(value)
+        return value
 
     def _get_field(self, field):
         self._get_data()
@@ -39,6 +42,7 @@ class OrthancObject(object):
 
 class Patient(OrthancObject):
     """ Orthanc patient """
+    _studies = None
     def __init__(self, orthanc, id):
         super(self.__class__,self).__init__(orthanc, 'patients', id)
 
@@ -48,7 +52,7 @@ class Patient(OrthancObject):
 
     @property
     def dob(self):
-        return dicom_date(self._get_tag('PatientBirthDate'))
+        return self._get_tag('PatientBirthDate',dicom_date)
 
     @property
     def sex(self):
@@ -60,19 +64,20 @@ class Patient(OrthancObject):
 
     @property
     def studies(self):
-        return [Study(orthanc,x,patient=self)
-                for x in self._get_field('Studies')]
+        if self._studies is None:
+            self._studies = [Study(self.orthanc,x,patient=self)
+                    for x in self._get_field('Studies')]
+        return self._studies
 
 
 class Study(OrthancObject):
     """ Orthanc study """
-    def __init__(self, orthanc, id, patient=None, series=None):
+    def __init__(self, orthanc, id):
         super(self.__class__,self).__init__(orthanc, 'studies', id)
-        self._patient = patient
 
     @property
     def date(self):
-        return dicom_date(self._get_tag('StudyDate'))
+        return self._get_tag('StudyDate', dicom_date)
 
     @property
     def description(self):
@@ -92,18 +97,17 @@ class Study(OrthancObject):
 
     @property
     def series(self):
-        return [Series(orthanc,x,study=self)
+        return [Series(self.orthanc,x)
                 for x in self._get_field('Series')]
 
     @property
     def patient(self):
-        if self._patient is None:
-            self._patient = Patient(self.orthanc,self._get_field('ParentPatient'))
-        return self._patient
+        return Patient(self.orthanc,self._get_field('ParentPatient'))
 
 
-class Series():
+class Series(OrthancObject):
     """ Orthanc series """
+    _instances = None
     def __init__(self, orthanc, id):
         super(self.__class__,self).__init__(orthanc, 'series', id)
 
@@ -136,7 +140,65 @@ class Series():
         return self._get_tag('SeriesTime')
     @property
     def study(self):
-        return Study(orthanc, self._get_field('ParentStudy'))
+        return Study(self.orthanc, self._get_field('ParentStudy'))
+    @property
+    def status(self):
+        return self._get_field('Status')
+    @property
+    def is_stable(self):
+        return self._get_field('IsStable')
+    @property
+    def instances(self):
+        if self._instances is None:
+            self._instances = [DicomInstance(self.orthanc,x)
+                               for x in self._get_field('Instances')]
+        return self._instances
+    @property
+    def num_instances(self):
+        return len(self.instances)
+    @property
+    def mid_instance(self):
+        """ attempt to locate instance that is mid-series """
+        midn = int(self.num_instances/2)
+        for instance in self.instances:
+            if instance.index == midn:
+                return instance
+        return None
+    @property
+    def preview(self):
+        """ return preview for mid instance. in theory this will give
+            us a slice mid-brain, but it depends on the slice-order of
+            the acquisition.
+        """
+        return self.mid_instance.preview
+
+
+class DicomInstance(OrthancObject):
+    """ Orthanc dicom instance """
+    def __init__(self, orthanc, id):
+        super(self.__class__,self).__init__(orthanc, 'instances', id)
+
+    @property
+    def file_uid(self):
+        return self._get_field('FileUuid')
+    @property
+    def filesize(self):
+        return self._get_field('FileSize')
+    @property
+    def index(self):
+        return self._get_field('IndexInSeries')
+    @property
+    def acquisition_number(self):
+        return self._get_tag('AcquisitionNumber')
+    @property
+    def instance_number(self):
+        return self._get_tag('InstanceNumber')
+    @property
+    def sop_instance_uid(self):
+        return self._get_tag('SOPInstanceUID')
+    @property
+    def preview(self):
+        return self.orthanc.get_url('{}/preview'.format(self.path))
 
 
 class NewOrthancData():
@@ -180,6 +242,11 @@ class Orthanc():
         params = {'limit':limit, 'since':since}
         resp = self.get('/changes', params=params)
         return resp
+
+    def get_url(self, path, auth=None, params=None):
+        if self.user:
+            auth = (self.user, self.password)
+        return '{}{}'.format(self.host,path)
 
     def get(self, path, auth=None, params=None):
         if self.user:
