@@ -101,8 +101,16 @@ class Study(OrthancObject):
                 for x in self._get_field('Series')]
 
     @property
+    def series_count(self):
+        return len(self._get_field('Series'))
+
+    @property
     def patient(self):
         return Patient(self.orthanc,self._get_field('ParentPatient'))
+
+    def send_to(self, modality):
+        uri = '/modalities/{}/store'.format(modality)
+        return self.orthanc.post(uri, data=self.id)
 
 
 class Series(OrthancObject):
@@ -232,7 +240,7 @@ class NewOrthancData():
 
 class Orthanc():
     """ Direct interface to Orthanc REST API"""
-    def __init__(self, host, user=None, password=None):
+    def __init__(self, host=None, user=None, password=None):
         self.host     = host
         self.user     = user
         self.password = password
@@ -251,8 +259,29 @@ class Orthanc():
     def get(self, path, auth=None, params=None):
         if self.user:
             auth = (self.user,self.password)
-        return json.decode(requests.get('{}{}'.format(self.host,path),
-                           auth=auth, params=params).content)
+        req = requests.get('{}{}'.format(self.host,path),
+                            auth = auth,
+                            params = params)
+        if req.status_code == 200:
+            return json.decode(req.content)
+        else:
+            # TODO: throw error?
+            return None
+
+    def post(self, path, data, auth=None):
+        if self.user:
+            auth = (self.user,self.password)
+        req = requests.post('{}{}'.format(self.host,path),
+                            data = data,
+                            auth = auth)
+        if req.status_code == 200:
+            return json.decode(req.content)
+        else:
+            # TODO: throw error?
+            return None
+
+    def put(self, path, data):
+        pass
 
     def patient(self, id):
         return Patient(self, id)
@@ -263,7 +292,10 @@ class Orthanc():
     def series(self, id):
         return Series(self, id)
 
-    def put(self, path, data):
-        pass
+    def init_app(self, app):
+        self.host = app.config['ORTHANC_URI']
 
+    @property
+    def modalities(self):
+        return self.get('/modalities')
 
