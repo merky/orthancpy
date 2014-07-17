@@ -1,4 +1,5 @@
 from datetime import datetime
+from simplejson import JSONEncoder
 
 def dicom_date(string,format="%Y%m%d"):
     return datetime.strptime(string, format).date()
@@ -105,6 +106,18 @@ class Study(OrthancObject):
     def patient(self):
         return Patient(self.orthanc,self._get_field('ParentPatient'))
 
+    def anonymize(self, obscure_id):
+        uri = '{}/anonymize'.format(self.path)
+        data = {"Replace":
+                    {"PatientName":obscure_id,
+                     "PatientID":  obscure_id},
+                "Keep":
+                    ["StudyDescription",
+                     "SeriesDescription"]
+                }
+
+        return self.orthanc.post(uri, data=data)
+
     def send_to(self, modality):
         uri = '/modalities/{}/store'.format(modality)
         return self.orthanc.post(uri, data=self.id)
@@ -158,17 +171,17 @@ class Series(OrthancObject):
             self._instances = [DicomInstance(self.orthanc,x)
                                for x in self._get_field('Instances')]
         return self._instances
+
     @property
     def num_instances(self):
         return len(self.instances)
+
     @property
     def mid_instance(self):
         """ attempt to locate instance that is mid-series """
         midn = int(self.num_instances/2)
-        for instance in self.instances:
-            if instance.index == midn:
-                return instance
-        return None
+        return self.instances[midn]
+
     @property
     def preview(self):
         """ return preview for mid instance. in theory this will give

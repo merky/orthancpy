@@ -38,6 +38,8 @@ class NewOrthancData():
 
 class Orthanc():
     """ Direct interface to Orthanc REST API"""
+    _ready = None
+
     def __init__(self, host=None, user=None, password=None):
         self.host     = host
         self.user     = user
@@ -92,6 +94,12 @@ class Orthanc():
 
     def init_app(self, app):
         self.host = app.config['ORTHANC_URI']
+
+    def ready(self):
+        """ tests if connection is good """
+        if self._ready is None:
+            self._ready = False if self.get('/system') is None else True
+        return self._ready
 
     @property
     def modalities(self):
