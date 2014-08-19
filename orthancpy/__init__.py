@@ -1,11 +1,10 @@
 #!/bin/python
 
 import requests
-from simplejson import JSONDecoder
+import simplejson
 from .models import Patient, Study, Series
 
-json = JSONDecoder()
-
+json = simplejson.JSONDecoder()
 
 class NewOrthancData():
     """ Access recently chnaged data as seen 
@@ -51,6 +50,10 @@ class Orthanc():
         resp = self.get('/changes', params=params)
         return resp
 
+    def reset_changes(self):
+        resp = self.delete('/changes')
+        return resp
+
     def get_url(self, path, auth=None, params=None):
         if self.user:
             auth = (self.user, self.password)
@@ -72,7 +75,7 @@ class Orthanc():
         if self.user:
             auth = (self.user,self.password)
         req = requests.post('{}{}'.format(self.host,path),
-                            data = data,
+                            data = simplejson.dumps(data),
                             auth = auth)
         if req.status_code == 200:
             return json.decode(req.content)
@@ -80,7 +83,19 @@ class Orthanc():
             # TODO: throw error?
             return None
 
+    def delete(self, path, auth=None):
+        if self.user:
+            auth = (self.user,self.password)
+        req = requests.delete('{}{}'.format(self.host,path),
+                            auth = auth)
+        if req.status_code == 200:
+            return True
+        else:
+            # TODO: throw error?
+            return None
+
     def put(self, path, data):
+        # TODO
         pass
 
     def patient(self, id):
