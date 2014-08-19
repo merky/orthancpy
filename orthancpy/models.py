@@ -2,7 +2,10 @@ from datetime import datetime
 from simplejson import JSONEncoder
 
 def dicom_date(string,format="%Y%m%d"):
-    return datetime.strptime(string, format).date()
+    if string is not None:
+        return datetime.strptime(string, format).date()
+    else:
+        return None
 
 
 class OrthancObject(object):
@@ -36,6 +39,13 @@ class OrthancObject(object):
         self._get_data()
         return self._data.get(field, None)
 
+    def delete(self):
+        self.orthanc.delete(self.path)
+ 
+    @property 
+    def exists(self):
+        self._get_data()
+        return self._data is not None
 
 
 class Patient(OrthancObject):
@@ -106,11 +116,18 @@ class Study(OrthancObject):
     def patient(self):
         return Patient(self.orthanc,self._get_field('ParentPatient'))
 
+    @property
+    def is_anonymized(self):
+        return self._get_field('AnonymizedFrom')
+
     def anonymize(self, obscure_id):
         uri = '{}/anonymize'.format(self.path)
-        data = {"Replace":
-                    {"PatientName":obscure_id,
-                     "PatientID":  obscure_id},
+        data = {
+                "Replace":
+                    {
+                     "PatientName":obscure_id,
+                     "PatientID":  obscure_id
+                    },
                 "Keep":
                     ["StudyDescription",
                      "SeriesDescription"]
