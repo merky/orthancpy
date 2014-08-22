@@ -2,9 +2,9 @@ from datetime import datetime
 from simplejson import JSONEncoder
 
 def dicom_date(string,format="%Y%m%d"):
-    if string is not None:
+    try:
         return datetime.strptime(string, format).date()
-    else:
+    except:
         return None
 
 
